@@ -1,16 +1,43 @@
 import os
 
-from flask import Flask, jsonify, request
+import requests
+from flask import Flask, jsonify, redirect, request
 
 app = Flask(__name__)
+
+CLIENT_ID = os.environ.get("MELI_CLIENT_ID")
+CLIENT_SECRET = os.environ.get("MELI_CLIENT_SECRET")
+REDIRECT_URI = "https://mercadolibre-callback.onrender.com/callback"
+
+# Almacenamiento temporal. Se pierde cuando Render reinicia.
+tokens = {}
 
 
 @app.route("/", methods=["GET"])
 def inicio():
     return jsonify(
         status="ok",
-        message="Servicio de Mercado Libre activo"
+        message="Servicio de Mercado Libre activo",
+        authorize_url="/authorize"
     ), 200
+
+
+@app.route("/authorize", methods=["GET"])
+def authorize():
+    if not CLIENT_ID:
+        return jsonify(
+            status="error",
+            message="Falta la variable MELI_CLIENT_ID en Render"
+        ), 500
+
+    authorization_url = (
+        "https://auth.mercadolibre.cl/authorization"
+        f"?response_type=code"
+        f"&client_id={CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+    )
+
+    return redirect(authorization_url)
 
 
 @app.route("/callback", methods=["GET"])
@@ -31,13 +58,69 @@ def callback():
             message="Endpoint callback disponible"
         ), 200
 
-    # Por ahora solo confirma la recepción.
-    # Después cambiaremos el código por los tokens OAuth.
+    if not CLIENT_ID or not CLIENT_SECRET:
+        return jsonify(
+            status="error",
+            message="Faltan MELI_CLIENT_ID o MELI_CLIENT_SECRET en Render"
+        ), 500
+
+    token_response = requests.post(
+        "https://api.mercadolibre.com/oauth/token",
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
+        data={
+            "grant_type": "authorization_code",
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "code": code,
+            "redirect_uri": REDIRECT_URI
+        },
+        timeout=30
+    )
+
+    result = token_response.json()
+
+    if not token_response.ok:
+        return jsonify(
+            status="error",
+            message="Mercado Libre no pudo generar los tokens",
+            details=result
+        ), token_response.status_code
+
+    tokens["access_token"] = result.get("access_token")
+    tokens["refresh_token"] = result.get("refresh_token")
+    tokens["expires_in"] = result.get("expires_in")
+    tokens["user_id"] = result.get("user_id")
+
     return jsonify(
         status="success",
-        message="Código de autorización recibido",
-        code=code
+        message="Autorización completada y tokens recibidos",
+        user_id=tokens["user_id"],
+        expires_in=tokens["expires_in"],
+        access_token_guardado=bool(tokens["access_token"]),
+        refresh_token_guardado=bool(tokens["refresh_token"])
     ), 200
+
+
+@app.route("/me", methods=["GET"])
+def me():
+    access_token = tokens.get("access_token")
+
+    if not access_token:
+        return jsonify(
+            status="error",
+            message="Primero debes autorizar la aplicación entrando a /authorize"
+        ), 401
+
+    response = requests.get(
+        "https://api.mercadolibre.com/users/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=30
+    )
+
+    return jsonify(response.json()), response.status_code
 
 
 @app.route("/notifications", methods=["GET", "POST"])
@@ -49,7 +132,6 @@ def notifications():
         ), 200
 
     notification = request.get_json(silent=True)
-
     print("Notificación recibida:", notification)
 
     return jsonify(status="received"), 200
