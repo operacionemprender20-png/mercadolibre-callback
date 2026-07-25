@@ -2,6 +2,7 @@ import os
 
 import requests
 from flask import Flask, jsonify, redirect, request
+from mercado_libre import obtener_categorias
 
 app = Flask(__name__)
 
