@@ -15,8 +15,16 @@ tokens = {}
 
 @app.route("/categorias", methods=["GET"])
 def categorias():
+    access_token = tokens.get("access_token")
+
+    if not access_token:
+        return jsonify(
+            status="error",
+            message="Primero debes autorizar la aplicación entrando a /authorize"
+        ), 401
+
     try:
-        categorias = obtener_categorias()
+        categorias = obtener_categorias(access_token)
 
         return jsonify(
             status="ok",
