@@ -38,3 +38,20 @@ def obtener_categoria(category_id, access_token=None):
     respuesta.raise_for_status()
 
     return respuesta.json()
+
+def obtener_subcategorias(category_id, access_token=None):
+    categoria = obtener_categoria(category_id, access_token)
+
+    subcategorias = []
+
+    for subcategoria in categoria.get("children_categories", []):
+        subcategorias.append({
+            "id": subcategoria.get("id"),
+            "nombre": subcategoria.get("name"),
+            "publicaciones": subcategoria.get(
+                "total_items_in_this_category",
+                0
+            )
+        })
+
+    return subcategorias
