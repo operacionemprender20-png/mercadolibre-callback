@@ -37,7 +37,31 @@ def categorias():
             status="error",
             message=str(e)
         ), 500
-        
+
+@app.route("/categoria/<category_id>", methods=["GET"])
+def categoria(category_id):
+    access_token = tokens.get("access_token")
+
+    if not access_token:
+        return jsonify(
+            status="error",
+            message="Primero debes autorizar la aplicación entrando a /authorize"
+        ), 401
+
+    try:
+        categoria = obtener_categoria(category_id, access_token)
+
+        return jsonify(
+            status="ok",
+            categoria=categoria
+        ), 200
+
+    except Exception as e:
+        return jsonify(
+            status="error",
+            message=str(e)
+        ), 500
+
 @app.route("/", methods=["GET"])
 def inicio():
     return jsonify(
