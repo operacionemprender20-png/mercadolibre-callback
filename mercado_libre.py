@@ -14,12 +14,12 @@ def obtener_headers(access_token=None):
     }
 
 
-def obtener_categorias():
+def obtener_categorias(access_token=None):
     url = f"{API_URL}/sites/{SITE_ID}/categories"
 
     respuesta = requests.get(
         url,
-        headers=obtener_headers(),
+        headers=obtener_headers(access_token),
         timeout=30
     )
     respuesta.raise_for_status()
