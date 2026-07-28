@@ -27,12 +27,12 @@ def obtener_categorias(access_token=None):
     return respuesta.json()
 
 
-def obtener_categoria(category_id):
+def obtener_categoria(category_id, access_token=None):
     url = f"{API_URL}/categories/{category_id}"
 
     respuesta = requests.get(
         url,
-        headers=obtener_headers(),
+        headers=obtener_headers(access_token),
         timeout=30
     )
     respuesta.raise_for_status()
