@@ -5,14 +5,12 @@ API_URL = "https://api.mercadolibre.com"
 SITE_ID = "MLC"
 
 
-def obtener_headers():
-    token = os.getenv("MELI_ACCESS_TOKEN")
-
-    if not token:
+def obtener_headers(access_token=None):
+    if not access_token:
         return {}
 
     return {
-        "Authorization": f"Bearer {token}"
+        "Authorization": f"Bearer {access_token}"
     }
 
 
