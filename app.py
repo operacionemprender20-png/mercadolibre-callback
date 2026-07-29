@@ -196,7 +196,7 @@ def productos_categoria(category_id):
         resultado = buscar_productos(
             category_id,
             access_token,
-            limit=10
+            limit=1
         )
 
         return jsonify(resultado)
