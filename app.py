@@ -182,6 +182,30 @@ def callback():
         refresh_token_guardado=bool(tokens["refresh_token"])
     ), 200
 
+@app.route("/productos/<category_id>")
+def productos_categoria(category_id):
+    access_token = tokens.get("access_token")
+
+    if not access_token:
+        return jsonify({
+            "status": "error",
+            "mensaje": "No hay access token. Debes autenticarte nuevamente."
+        }), 401
+
+    try:
+        resultado = buscar_productos(
+            category_id,
+            access_token,
+            limit=10
+        )
+
+        return jsonify(resultado)
+
+    except requests.RequestException as error:
+        return jsonify({
+            "status": "error",
+            "mensaje": str(error)
+        }), 500
 
 @app.route("/me", methods=["GET"])
 def me():
