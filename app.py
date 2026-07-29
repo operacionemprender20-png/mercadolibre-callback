@@ -2,7 +2,8 @@ import os
 
 import requests
 from flask import Flask, jsonify, redirect, request
-from mercado_libre import obtener_categorias, obtener_categoria,buscar_productos
+from mercado_libre import obtener_categorias, obtener_categoria,buscar_productos, buscar_productos_por_texto
+)
 from crawler import construir_indice_subcategorias
 
 app = Flask(__name__)
@@ -239,6 +240,30 @@ def notifications():
 
     return jsonify(status="received"), 200
 
+@app.route("/buscar/<texto>")
+def buscar_por_texto(texto):
+    access_token = tokens.get("access_token")
+
+    if not access_token:
+        return jsonify({
+            "status": "error",
+            "mensaje": "No hay access token. Debes autenticarte nuevamente."
+        }), 401
+
+    try:
+        resultado = buscar_productos_por_texto(
+            texto,
+            access_token,
+            limit=1
+        )
+
+        return jsonify(resultado)
+
+    except requests.RequestException as error:
+        return jsonify({
+            "status": "error",
+            "mensaje": str(error)
+        }), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "10000"))
