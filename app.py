@@ -3,7 +3,7 @@ import os
 import requests
 from flask import Flask, jsonify, redirect, request
 from mercado_libre import obtener_categorias, obtener_categoria,buscar_productos, buscar_productos_por_texto
-)
+
 from crawler import construir_indice_subcategorias
 
 app = Flask(__name__)
