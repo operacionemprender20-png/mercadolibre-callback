@@ -62,6 +62,35 @@ def categoria(category_id):
             status="error",
             message=str(e)
         ), 500
+        
+@app.route("/indice/<category_id>")
+def indice_subcategorias(category_id):
+    access_token = tokens.get("access_token")
+
+    if not access_token:
+        return jsonify({
+            "status": "error",
+            "mensaje": "No hay access token. Debes autenticarte nuevamente."
+        }), 401
+
+    try:
+        subcategorias = construir_indice_subcategorias(
+            category_id,
+            access_token
+        )
+
+        return jsonify({
+            "status": "ok",
+            "category_id": category_id,
+            "total_subcategorias": len(subcategorias),
+            "subcategorias": subcategorias
+        })
+
+    except requests.RequestException as error:
+        return jsonify({
+            "status": "error",
+            "mensaje": str(error)
+        }), 500
 
 @app.route("/", methods=["GET"])
 def inicio():
