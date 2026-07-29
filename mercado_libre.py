@@ -71,6 +71,12 @@ def buscar_productos(category_id, access_token=None, limit=10):
         timeout=30
     )
 
-    respuesta.raise_for_status()
+    if not respuesta.ok:
+        return {
+            "status": "error",
+            "codigo_http": respuesta.status_code,
+            "url_consultada": respuesta.url,
+            "respuesta_mercado_libre": respuesta.text
+        }
 
     return respuesta.json()
