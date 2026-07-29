@@ -55,3 +55,22 @@ def obtener_subcategorias(category_id, access_token=None):
         })
 
     return subcategorias
+
+def buscar_productos(category_id, access_token=None, limit=10):
+    url = f"{API_URL}/sites/{SITE_ID}/search"
+
+    parametros = {
+        "category": category_id,
+        "limit": limit
+    }
+
+    respuesta = requests.get(
+        url,
+        headers=obtener_headers(access_token),
+        params=parametros,
+        timeout=30
+    )
+
+    respuesta.raise_for_status()
+
+    return respuesta.json()
