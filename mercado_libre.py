@@ -107,7 +107,12 @@ def buscar_productos_por_texto(texto, access_token=None, limit=1):
 
     return respuesta.json()
 
-def buscar_catalogo(texto, access_token=None, limit=10):
+def buscar_catalogo(
+    texto,
+    access_token=None,
+    limit=10,
+    domain_id=None
+):
     url = f"{API_URL}/products/search"
 
     parametros = {
@@ -116,6 +121,9 @@ def buscar_catalogo(texto, access_token=None, limit=10):
         "q": texto,
         "limit": limit
     }
+
+    if domain_id:
+        parametros["domain_id"] = domain_id
 
     respuesta = requests.get(
         url,
@@ -133,3 +141,4 @@ def buscar_catalogo(texto, access_token=None, limit=10):
         }
 
     return respuesta.json()
+  
