@@ -356,4 +356,3 @@ def construir_inventario_rama(category_id, access_token):
         "categorias": categorias
     }
 
-def construir_inventario_rama(category_id, access_token):
