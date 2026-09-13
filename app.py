@@ -267,7 +267,38 @@ def buscar_por_texto(texto):
             "status": "error",
             "mensaje": str(error)
         }), 500
+@app.route("/inventario-categorias", methods=["GET"])
+def inventario_categorias():
+    access_token = tokens.get("access_token")
 
+    if not access_token:
+        return jsonify({
+            "status": "error",
+            "mensaje": "No hay access token. Debes autenticarte nuevamente."
+        }), 401
+
+    try:
+        resultado = construir_inventario_categorias(
+            access_token
+        )
+
+        return jsonify({
+            "status": "ok",
+            **resultado
+        }), 200
+
+    except requests.RequestException as error:
+        return jsonify({
+            "status": "error",
+            "mensaje": str(error)
+        }), 500
+
+    except Exception as error:
+        return jsonify({
+            "status": "error",
+            "mensaje": str(error)
+        }), 500
+        
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
