@@ -2,8 +2,13 @@ import os
 
 import requests
 from flask import Flask, jsonify, redirect, request
-from mercado_libre import obtener_categorias, obtener_categoria,buscar_productos, buscar_productos_por_texto
-
+from mercado_libre import (
+    obtener_categorias,
+    obtener_categoria,
+    buscar_productos,
+    buscar_productos_por_texto,
+    buscar_catalogo
+)
 from crawler import (
     construir_indice_subcategorias,
     construir_inventario_categorias,
