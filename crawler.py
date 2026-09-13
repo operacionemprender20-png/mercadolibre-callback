@@ -264,3 +264,96 @@ def construir_inventario_categorias(access_token):
 
         "categorias": categorias
     }
+def construir_inventario_rama(category_id, access_token):
+    """
+    Recorre una sola categoría principal y todos sus descendientes.
+    """
+
+    visitadas = set()
+    categorias = []
+    profundidad_maxima = 0
+
+    categoria_principal = obtener_categoria(
+        category_id,
+        access_token
+    )
+
+    principal_nombre = categoria_principal.get("name", "")
+
+    def recorrer(id_actual, nivel, ruta):
+        nonlocal profundidad_maxima
+
+        if id_actual in visitadas:
+            return
+
+        visitadas.add(id_actual)
+
+        categoria = obtener_categoria(
+            id_actual,
+            access_token
+        )
+
+        nombre = categoria.get("name", "")
+        hijos = categoria.get("children_categories", [])
+
+        publicaciones = (
+            categoria.get("total_items_in_this_category", 0) or 0
+        )
+
+        es_terminal = len(hijos) == 0
+
+        nueva_ruta = ruta + [nombre]
+
+        profundidad_maxima = max(
+            profundidad_maxima,
+            nivel
+        )
+
+        categorias.append({
+            "id": id_actual,
+            "nombre": nombre,
+            "nivel": nivel,
+            "publicaciones": publicaciones,
+            "es_terminal": es_terminal,
+            "cantidad_hijos": len(hijos),
+            "ruta": " > ".join(nueva_ruta)
+        })
+
+        for hijo in hijos:
+            hijo_id = hijo.get("id")
+
+            if hijo_id:
+                recorrer(
+                    hijo_id,
+                    nivel + 1,
+                    nueva_ruta
+                )
+
+    recorrer(
+        category_id,
+        0,
+        []
+    )
+
+    terminales = sum(
+        1
+        for categoria in categorias
+        if categoria["es_terminal"]
+    )
+
+    return {
+        "categoria_principal": {
+            "id": category_id,
+            "nombre": principal_nombre
+        },
+
+        "resumen": {
+            "categorias_encontradas": len(categorias),
+            "categorias_terminales": terminales,
+            "profundidad_maxima": profundidad_maxima
+        },
+
+        "categorias": categorias
+    }
+
+def construir_inventario_rama(category_id, access_token):
