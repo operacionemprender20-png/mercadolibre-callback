@@ -346,11 +346,14 @@ def catalogo(texto):
             "mensaje": "No hay access token. Debes autenticarte nuevamente."
         }), 401
 
+    domain_id = request.args.get("domain_id")
+
     try:
         resultado = buscar_catalogo(
             texto,
             access_token,
-            limit=10
+            limit=10,
+            domain_id=domain_id
         )
 
         return jsonify(resultado)
