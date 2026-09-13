@@ -335,7 +335,32 @@ def inventario_rama(category_id):
             "status": "error",
             "mensaje": str(error)
         }), 500
-        
+
+@app.route("/catalogo/<texto>")
+def catalogo(texto):
+    access_token = tokens.get("access_token")
+
+    if not access_token:
+        return jsonify({
+            "status": "error",
+            "mensaje": "No hay access token. Debes autenticarte nuevamente."
+        }), 401
+
+    try:
+        resultado = buscar_catalogo(
+            texto,
+            access_token,
+            limit=10
+        )
+
+        return jsonify(resultado)
+
+    except requests.RequestException as error:
+        return jsonify({
+            "status": "error",
+            "mensaje": str(error)
+        }), 500
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
