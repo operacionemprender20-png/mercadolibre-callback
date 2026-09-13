@@ -106,3 +106,30 @@ def buscar_productos_por_texto(texto, access_token=None, limit=1):
         }
 
     return respuesta.json()
+
+def buscar_catalogo(texto, access_token=None, limit=10):
+    url = f"{API_URL}/products/search"
+
+    parametros = {
+        "status": "active",
+        "site_id": SITE_ID,
+        "q": texto,
+        "limit": limit
+    }
+
+    respuesta = requests.get(
+        url,
+        headers=obtener_headers(access_token),
+        params=parametros,
+        timeout=30
+    )
+
+    if not respuesta.ok:
+        return {
+            "status": "error",
+            "codigo_http": respuesta.status_code,
+            "url_consultada": respuesta.url,
+            "respuesta_mercado_libre": respuesta.text
+        }
+
+    return respuesta.json()
