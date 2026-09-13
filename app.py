@@ -6,9 +6,9 @@ from mercado_libre import obtener_categorias, obtener_categoria,buscar_productos
 
 from crawler import (
     construir_indice_subcategorias,
-    construir_inventario_categorias
+    construir_inventario_categorias,
+    construir_inventario_rama
 )
-
 app = Flask(__name__)
 
 CLIENT_ID = os.environ.get("MELI_CLIENT_ID")
