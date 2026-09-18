@@ -5,6 +5,7 @@ from flask import Flask, jsonify, redirect, request
 from mercado_libre import (
     obtener_categorias,
     obtener_categoria,
+    obtener_subcategorias,
     buscar_productos,
     buscar_productos_por_texto,
     buscar_catalogo
