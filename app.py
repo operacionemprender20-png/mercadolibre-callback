@@ -370,3 +370,23 @@ def catalogo(texto):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
+
+@app.route("/tendencias")
+def tendencias():
+    access_token = obtener_access_token()
+
+    resultado = obtener_tendencias(access_token)
+
+    return jsonify(resultado)
+
+
+@app.route("/tendencias/<category_id>")
+def tendencias_categoria(category_id):
+    access_token = obtener_access_token()
+
+    resultado = obtener_tendencias_categoria(
+        category_id,
+        access_token
+    )
+
+    return jsonify(resultado)
