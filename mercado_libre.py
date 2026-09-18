@@ -25,7 +25,25 @@ def obtener_categorias(access_token=None):
     respuesta.raise_for_status()
 
     return respuesta.json()
+    
+def obtener_arbol_categorias(access_token=None):
+    url = f"{API_URL}/sites/{SITE_ID}/categories/all"
 
+    respuesta = requests.get(
+        url,
+        headers=obtener_headers(access_token),
+        timeout=60
+    )
+
+    if not respuesta.ok:
+        return {
+            "status": "error",
+            "codigo_http": respuesta.status_code,
+            "url_consultada": respuesta.url,
+            "respuesta_mercado_libre": respuesta.text
+        }
+
+    return respuesta.json()
 
 def obtener_categoria(category_id, access_token=None):
     url = f"{API_URL}/categories/{category_id}"
