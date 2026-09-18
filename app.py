@@ -8,7 +8,9 @@ from mercado_libre import (
     obtener_subcategorias,
     buscar_productos,
     buscar_productos_por_texto,
-    buscar_catalogo
+    buscar_catalogo,
+    obtener_tendencias,
+    obtener_tendencias_categoria
 )
 from crawler import (
     construir_indice_subcategorias,
