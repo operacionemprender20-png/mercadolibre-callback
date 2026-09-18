@@ -159,4 +159,39 @@ def buscar_catalogo(
         }
 
     return respuesta.json()
-  
+def obtener_tendencias(access_token=None):
+    url = f"{API_URL}/trends/{SITE_ID}"
+
+    respuesta = requests.get(
+        url,
+        headers=obtener_headers(access_token),
+        timeout=30
+    )
+
+    if not respuesta.ok:
+        return {
+            "status": "error",
+            "codigo_http": respuesta.status_code,
+            "respuesta_mercado_libre": respuesta.text
+        }
+
+    return respuesta.json()
+
+
+def obtener_tendencias_categoria(category_id, access_token=None):
+    url = f"{API_URL}/trends/{SITE_ID}/{category_id}"
+
+    respuesta = requests.get(
+        url,
+        headers=obtener_headers(access_token),
+        timeout=30
+    )
+
+    if not respuesta.ok:
+        return {
+            "status": "error",
+            "codigo_http": respuesta.status_code,
+            "respuesta_mercado_libre": respuesta.text
+        }
+
+    return respuesta.json() 
