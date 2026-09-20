@@ -13,7 +13,8 @@ from mercado_libre import (
     buscar_productos_por_texto,
     buscar_catalogo,
     obtener_tendencias,
-    obtener_tendencias_categoria
+    obtener_tendencias_categoria,
+    obtener_mas_vendidos_categoria
 )
 
 from crawler import (
