@@ -686,7 +686,6 @@ def catalogo(texto):
             "mensaje": str(error)
         }), 500
 
-
 # ============================================================
 # TENDENCIAS
 # ============================================================
@@ -740,7 +739,7 @@ def tendencias_categoria(category_id):
 
         return jsonify(resultado), 200
 
-      except Exception as error:
+    except Exception as error:
         return jsonify({
             "status": "error",
             "mensaje": str(error)
@@ -779,11 +778,6 @@ def mas_vendidos_categoria(category_id):
             "status": "error",
             "mensaje": str(error)
         }), 500
-
-
-# ============================================================
-# NOTIFICACIONES
-# ============================================================
 
 # ============================================================
 # NOTIFICACIONES
