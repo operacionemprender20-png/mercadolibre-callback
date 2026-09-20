@@ -740,12 +740,50 @@ def tendencias_categoria(category_id):
 
         return jsonify(resultado), 200
 
+      except Exception as error:
+        return jsonify({
+            "status": "error",
+            "mensaje": str(error)
+        }), 500
+
+
+# ============================================================
+# MÁS VENDIDOS
+# ============================================================
+
+@app.route(
+    "/mas-vendidos/<category_id>",
+    methods=["GET"]
+)
+def mas_vendidos_categoria(category_id):
+    try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify({
+                "status": "error",
+                "mensaje":
+                    "No hay access token. "
+                    "Debes autenticarte nuevamente."
+            }), 401
+
+        resultado = obtener_mas_vendidos_categoria(
+            category_id,
+            access_token
+        )
+
+        return jsonify(resultado), 200
+
     except Exception as error:
         return jsonify({
             "status": "error",
             "mensaje": str(error)
         }), 500
 
+
+# ============================================================
+# NOTIFICACIONES
+# ============================================================
 
 # ============================================================
 # NOTIFICACIONES
