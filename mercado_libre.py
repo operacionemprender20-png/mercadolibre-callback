@@ -195,3 +195,28 @@ def obtener_tendencias_categoria(category_id, access_token=None):
         }
 
     return respuesta.json() 
+
+def obtener_mas_vendidos_categoria(
+    category_id,
+    access_token=None
+):
+    url = (
+        f"{API_URL}/highlights/"
+        f"{SITE_ID}/category/{category_id}"
+    )
+
+    respuesta = requests.get(
+        url,
+        headers=obtener_headers(access_token),
+        timeout=30
+    )
+
+    if not respuesta.ok:
+        return {
+            "status": "error",
+            "codigo_http": respuesta.status_code,
+            "url_consultada": respuesta.url,
+            "respuesta_mercado_libre": respuesta.text
+        }
+
+    return respuesta.json()
