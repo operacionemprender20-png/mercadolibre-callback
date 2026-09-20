@@ -1,4 +1,7 @@
 import os
+from datetime import datetime, timedelta, timezone
+
+import psycopg2
 import requests
 from flask import Flask, jsonify, redirect, request
 
@@ -24,12 +27,206 @@ app = Flask(__name__)
 
 CLIENT_ID = os.environ.get("MELI_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("MELI_CLIENT_SECRET")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 REDIRECT_URI = "https://mercadolibre-callback.onrender.com/callback"
+TOKEN_URL = "https://api.mercadolibre.com/oauth/token"
 
-# Almacenamiento temporal.
-# Se pierde cuando Render reinicia.
-tokens = {}
+
+# ============================================================
+# BASE DE DATOS
+# ============================================================
+
+def obtener_conexion():
+    if not DATABASE_URL:
+        raise RuntimeError("Falta la variable DATABASE_URL en Render")
+
+    return psycopg2.connect(DATABASE_URL)
+
+
+def inicializar_base_datos():
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS mercado_libre_tokens (
+                    user_id BIGINT PRIMARY KEY,
+                    access_token TEXT NOT NULL,
+                    refresh_token TEXT NOT NULL,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+
+        conexion.commit()
+
+    finally:
+        conexion.close()
+
+
+def guardar_tokens(resultado):
+    access_token = resultado.get("access_token")
+    refresh_token = resultado.get("refresh_token")
+    expires_in = resultado.get("expires_in")
+    user_id = resultado.get("user_id")
+
+    if not access_token:
+        raise RuntimeError("Mercado Libre no devolvió access_token")
+
+    if not refresh_token:
+        raise RuntimeError("Mercado Libre no devolvió refresh_token")
+
+    if not expires_in:
+        raise RuntimeError("Mercado Libre no devolvió expires_in")
+
+    if not user_id:
+        raise RuntimeError("Mercado Libre no devolvió user_id")
+
+    expires_at = (
+        datetime.now(timezone.utc)
+        + timedelta(seconds=int(expires_in))
+    )
+
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO mercado_libre_tokens (
+                    user_id,
+                    access_token,
+                    refresh_token,
+                    expires_at,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, NOW())
+
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                    access_token = EXCLUDED.access_token,
+                    refresh_token = EXCLUDED.refresh_token,
+                    expires_at = EXCLUDED.expires_at,
+                    updated_at = NOW()
+            """, (
+                int(user_id),
+                access_token,
+                refresh_token,
+                expires_at
+            ))
+
+        conexion.commit()
+
+    finally:
+        conexion.close()
+
+
+def obtener_tokens_guardados():
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    user_id,
+                    access_token,
+                    refresh_token,
+                    expires_at
+                FROM mercado_libre_tokens
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """)
+
+            fila = cursor.fetchone()
+
+    finally:
+        conexion.close()
+
+    if not fila:
+        return None
+
+    return {
+        "user_id": fila[0],
+        "access_token": fila[1],
+        "refresh_token": fila[2],
+        "expires_at": fila[3]
+    }
+
+
+# ============================================================
+# RENOVACIÓN AUTOMÁTICA DEL TOKEN
+# ============================================================
+
+def renovar_access_token(refresh_token):
+    if not CLIENT_ID or not CLIENT_SECRET:
+        raise RuntimeError(
+            "Faltan MELI_CLIENT_ID o MELI_CLIENT_SECRET en Render"
+        )
+
+    respuesta = requests.post(
+        TOKEN_URL,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
+        data={
+            "grant_type": "refresh_token",
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "refresh_token": refresh_token
+        },
+        timeout=30
+    )
+
+    try:
+        resultado = respuesta.json()
+    except ValueError:
+        raise RuntimeError(
+            f"Mercado Libre devolvió HTTP {respuesta.status_code}: "
+            f"{respuesta.text}"
+        )
+
+    if not respuesta.ok:
+        raise RuntimeError(
+            f"No se pudo renovar el access token: {resultado}"
+        )
+
+    guardar_tokens(resultado)
+
+    return resultado["access_token"]
+
+
+def obtener_access_token():
+    tokens = obtener_tokens_guardados()
+
+    if not tokens:
+        return None
+
+    expires_at = tokens["expires_at"]
+
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    ahora = datetime.now(timezone.utc)
+
+    # Renovamos cinco minutos antes del vencimiento.
+    if expires_at <= ahora + timedelta(minutes=5):
+        return renovar_access_token(
+            tokens["refresh_token"]
+        )
+
+    return tokens["access_token"]
+
+
+# ============================================================
+# INICIALIZACIÓN
+# ============================================================
+
+try:
+    inicializar_base_datos()
+    print("Base de datos inicializada correctamente")
+except Exception as error:
+    print("Error inicializando PostgreSQL:", str(error))
 
 
 # ============================================================
@@ -40,7 +237,7 @@ tokens = {}
 def inicio():
     return jsonify(
         status="ok",
-        message="Servicio de Mercado Libre activo",
+        message="Servicio TrendVenta / Mercado Libre activo",
         authorize_url="/authorize"
     ), 200
 
@@ -51,7 +248,6 @@ def inicio():
 
 @app.route("/authorize", methods=["GET"])
 def authorize():
-
     if not CLIENT_ID:
         return jsonify(
             status="error",
@@ -70,7 +266,6 @@ def authorize():
 
 @app.route("/callback", methods=["GET"])
 def callback():
-
     code = request.args.get("code")
     error = request.args.get("error")
 
@@ -78,7 +273,10 @@ def callback():
         return jsonify(
             status="error",
             error=error,
-            description=request.args.get("error_description", "")
+            description=request.args.get(
+                "error_description",
+                ""
+            )
         ), 400
 
     if not code:
@@ -90,47 +288,92 @@ def callback():
     if not CLIENT_ID or not CLIENT_SECRET:
         return jsonify(
             status="error",
-            message="Faltan MELI_CLIENT_ID o MELI_CLIENT_SECRET en Render"
+            message=(
+                "Faltan MELI_CLIENT_ID o "
+                "MELI_CLIENT_SECRET en Render"
+            )
         ), 500
 
-    token_response = requests.post(
-        "https://api.mercadolibre.com/oauth/token",
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/x-www-form-urlencoded"
-        },
-        data={
-            "grant_type": "authorization_code",
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "code": code,
-            "redirect_uri": REDIRECT_URI
-        },
-        timeout=30
-    )
+    try:
+        token_response = requests.post(
+            TOKEN_URL,
+            headers={
+                "Accept": "application/json",
+                "Content-Type":
+                    "application/x-www-form-urlencoded"
+            },
+            data={
+                "grant_type": "authorization_code",
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "code": code,
+                "redirect_uri": REDIRECT_URI
+            },
+            timeout=30
+        )
 
-    result = token_response.json()
+        resultado = token_response.json()
 
-    if not token_response.ok:
+        if not token_response.ok:
+            return jsonify(
+                status="error",
+                message=(
+                    "Mercado Libre no pudo generar "
+                    "los tokens"
+                ),
+                details=resultado
+            ), token_response.status_code
+
+        guardar_tokens(resultado)
+
+        return jsonify(
+            status="success",
+            message=(
+                "Autorización completada. "
+                "Tokens guardados en PostgreSQL."
+            ),
+            user_id=resultado.get("user_id"),
+            expires_in=resultado.get("expires_in"),
+            access_token_guardado=True,
+            refresh_token_guardado=True,
+            almacenamiento="postgresql"
+        ), 200
+
+    except Exception as error:
         return jsonify(
             status="error",
-            message="Mercado Libre no pudo generar los tokens",
-            details=result
-        ), token_response.status_code
+            message=str(error)
+        ), 500
 
-    tokens["access_token"] = result.get("access_token")
-    tokens["refresh_token"] = result.get("refresh_token")
-    tokens["expires_in"] = result.get("expires_in")
-    tokens["user_id"] = result.get("user_id")
 
-    return jsonify(
-        status="success",
-        message="Autorización completada y tokens recibidos",
-        user_id=tokens["user_id"],
-        expires_in=tokens["expires_in"],
-        access_token_guardado=bool(tokens["access_token"]),
-        refresh_token_guardado=bool(tokens["refresh_token"])
-    ), 200
+# ============================================================
+# ESTADO DE AUTENTICACIÓN
+# ============================================================
+
+@app.route("/token-status", methods=["GET"])
+def token_status():
+    try:
+        tokens = obtener_tokens_guardados()
+
+        if not tokens:
+            return jsonify(
+                status="sin_autorizacion",
+                token_guardado=False,
+                authorize_url="/authorize"
+            ), 200
+
+        return jsonify(
+            status="ok",
+            token_guardado=True,
+            user_id=tokens["user_id"],
+            expires_at=tokens["expires_at"].isoformat()
+        ), 200
+
+    except Exception as error:
+        return jsonify(
+            status="error",
+            message=str(error)
+        ), 500
 
 
 # ============================================================
@@ -139,24 +382,36 @@ def callback():
 
 @app.route("/me", methods=["GET"])
 def me():
+    try:
+        access_token = obtener_access_token()
 
-    access_token = tokens.get("access_token")
+        if not access_token:
+            return jsonify(
+                status="error",
+                message=(
+                    "Primero debes autorizar la aplicación "
+                    "entrando a /authorize"
+                )
+            ), 401
 
-    if not access_token:
+        response = requests.get(
+            "https://api.mercadolibre.com/users/me",
+            headers={
+                "Authorization":
+                    f"Bearer {access_token}"
+            },
+            timeout=30
+        )
+
+        return jsonify(
+            response.json()
+        ), response.status_code
+
+    except Exception as error:
         return jsonify(
             status="error",
-            message="Primero debes autorizar la aplicación entrando a /authorize"
-        ), 401
-
-    response = requests.get(
-        "https://api.mercadolibre.com/users/me",
-        headers={
-            "Authorization": f"Bearer {access_token}"
-        },
-        timeout=30
-    )
-
-    return jsonify(response.json()), response.status_code
+            message=str(error)
+        ), 500
 
 
 # ============================================================
@@ -165,18 +420,21 @@ def me():
 
 @app.route("/categorias", methods=["GET"])
 def categorias():
-
-    access_token = tokens.get("access_token")
-
-    if not access_token:
-        return jsonify(
-            status="error",
-            message="Primero debes autorizar la aplicación entrando a /authorize"
-        ), 401
-
     try:
+        access_token = obtener_access_token()
 
-        resultado = obtener_categorias(access_token)
+        if not access_token:
+            return jsonify(
+                status="error",
+                message=(
+                    "Primero debes autorizar la aplicación "
+                    "entrando a /authorize"
+                )
+            ), 401
+
+        resultado = obtener_categorias(
+            access_token
+        )
 
         return jsonify(
             status="ok",
@@ -185,7 +443,6 @@ def categorias():
         ), 200
 
     except Exception as error:
-
         return jsonify(
             status="error",
             message=str(error)
@@ -194,16 +451,17 @@ def categorias():
 
 @app.route("/categoria/<category_id>", methods=["GET"])
 def categoria(category_id):
-
-    access_token = tokens.get("access_token")
-
-    if not access_token:
-        return jsonify(
-            status="error",
-            message="Primero debes autorizar la aplicación entrando a /authorize"
-        ), 401
-
     try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify(
+                status="error",
+                message=(
+                    "Primero debes autorizar la aplicación "
+                    "entrando a /authorize"
+                )
+            ), 401
 
         resultado = obtener_categoria(
             category_id,
@@ -216,7 +474,6 @@ def categoria(category_id):
         ), 200
 
     except Exception as error:
-
         return jsonify(
             status="error",
             message=str(error)
@@ -225,16 +482,16 @@ def categoria(category_id):
 
 @app.route("/indice/<category_id>", methods=["GET"])
 def indice_subcategorias(category_id):
-
-    access_token = tokens.get("access_token")
-
-    if not access_token:
-        return jsonify({
-            "status": "error",
-            "mensaje": "No hay access token. Debes autenticarte nuevamente."
-        }), 401
-
     try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify({
+                "status": "error",
+                "mensaje":
+                    "No hay access token. "
+                    "Debes autenticarte nuevamente."
+            }), 401
 
         subcategorias = construir_indice_subcategorias(
             category_id,
@@ -244,12 +501,12 @@ def indice_subcategorias(category_id):
         return jsonify({
             "status": "ok",
             "category_id": category_id,
-            "total_subcategorias": len(subcategorias),
+            "total_subcategorias":
+                len(subcategorias),
             "subcategorias": subcategorias
-        })
+        }), 200
 
-    except requests.RequestException as error:
-
+    except Exception as error:
         return jsonify({
             "status": "error",
             "mensaje": str(error)
@@ -260,18 +517,21 @@ def indice_subcategorias(category_id):
 # INVENTARIO DE CATEGORÍAS
 # ============================================================
 
-@app.route("/inventario-categorias", methods=["GET"])
+@app.route(
+    "/inventario-categorias",
+    methods=["GET"]
+)
 def inventario_categorias():
-
-    access_token = tokens.get("access_token")
-
-    if not access_token:
-        return jsonify({
-            "status": "error",
-            "mensaje": "No hay access token. Debes autenticarte nuevamente."
-        }), 401
-
     try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify({
+                "status": "error",
+                "mensaje":
+                    "No hay access token. "
+                    "Debes autenticarte nuevamente."
+            }), 401
 
         resultado = construir_inventario_categorias(
             access_token
@@ -282,33 +542,28 @@ def inventario_categorias():
             **resultado
         }), 200
 
-    except requests.RequestException as error:
-
-        return jsonify({
-            "status": "error",
-            "mensaje": str(error)
-        }), 500
-
     except Exception as error:
-
         return jsonify({
             "status": "error",
             "mensaje": str(error)
         }), 500
 
 
-@app.route("/inventario/<category_id>", methods=["GET"])
+@app.route(
+    "/inventario/<category_id>",
+    methods=["GET"]
+)
 def inventario_rama(category_id):
-
-    access_token = tokens.get("access_token")
-
-    if not access_token:
-        return jsonify({
-            "status": "error",
-            "mensaje": "No hay access token. Debes autenticarte nuevamente."
-        }), 401
-
     try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify({
+                "status": "error",
+                "mensaje":
+                    "No hay access token. "
+                    "Debes autenticarte nuevamente."
+            }), 401
 
         resultado = construir_inventario_rama(
             category_id,
@@ -320,15 +575,7 @@ def inventario_rama(category_id):
             **resultado
         }), 200
 
-    except requests.RequestException as error:
-
-        return jsonify({
-            "status": "error",
-            "mensaje": str(error)
-        }), 500
-
     except Exception as error:
-
         return jsonify({
             "status": "error",
             "mensaje": str(error)
@@ -339,18 +586,21 @@ def inventario_rama(category_id):
 # PRODUCTOS
 # ============================================================
 
-@app.route("/productos/<category_id>", methods=["GET"])
+@app.route(
+    "/productos/<category_id>",
+    methods=["GET"]
+)
 def productos_categoria(category_id):
-
-    access_token = tokens.get("access_token")
-
-    if not access_token:
-        return jsonify({
-            "status": "error",
-            "mensaje": "No hay access token. Debes autenticarte nuevamente."
-        }), 401
-
     try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify({
+                "status": "error",
+                "mensaje":
+                    "No hay access token. "
+                    "Debes autenticarte nuevamente."
+            }), 401
 
         resultado = buscar_productos(
             category_id,
@@ -358,10 +608,9 @@ def productos_categoria(category_id):
             limit=1
         )
 
-        return jsonify(resultado)
+        return jsonify(resultado), 200
 
-    except requests.RequestException as error:
-
+    except Exception as error:
         return jsonify({
             "status": "error",
             "mensaje": str(error)
@@ -372,18 +621,18 @@ def productos_categoria(category_id):
 # BÚSQUEDA
 # ============================================================
 
-@app.route("/buscar/<texto>")
+@app.route("/buscar/<texto>", methods=["GET"])
 def buscar_por_texto(texto):
-
-    access_token = tokens.get("access_token")
-
-    if not access_token:
-        return jsonify({
-            "status": "error",
-            "mensaje": "No hay access token. Debes autenticarte nuevamente."
-        }), 401
-
     try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify({
+                "status": "error",
+                "mensaje":
+                    "No hay access token. "
+                    "Debes autenticarte nuevamente."
+            }), 401
 
         resultado = buscar_productos_por_texto(
             texto,
@@ -391,10 +640,9 @@ def buscar_por_texto(texto):
             limit=1
         )
 
-        return jsonify(resultado)
+        return jsonify(resultado), 200
 
-    except requests.RequestException as error:
-
+    except Exception as error:
         return jsonify({
             "status": "error",
             "mensaje": str(error)
@@ -405,20 +653,22 @@ def buscar_por_texto(texto):
 # CATÁLOGO
 # ============================================================
 
-@app.route("/catalogo/<texto>")
+@app.route("/catalogo/<texto>", methods=["GET"])
 def catalogo(texto):
-
-    access_token = tokens.get("access_token")
-
-    if not access_token:
-        return jsonify({
-            "status": "error",
-            "mensaje": "No hay access token. Debes autenticarte nuevamente."
-        }), 401
-
-    domain_id = request.args.get("domain_id")
-
     try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify({
+                "status": "error",
+                "mensaje":
+                    "No hay access token. "
+                    "Debes autenticarte nuevamente."
+            }), 401
+
+        domain_id = request.args.get(
+            "domain_id"
+        )
 
         resultado = buscar_catalogo(
             texto,
@@ -427,10 +677,9 @@ def catalogo(texto):
             domain_id=domain_id
         )
 
-        return jsonify(resultado)
+        return jsonify(resultado), 200
 
-    except requests.RequestException as error:
-
+    except Exception as error:
         return jsonify({
             "status": "error",
             "mensaje": str(error)
@@ -443,16 +692,16 @@ def catalogo(texto):
 
 @app.route("/tendencias", methods=["GET"])
 def tendencias():
-
-    access_token = tokens.get("access_token")
-
-    if not access_token:
-        return jsonify({
-            "status": "error",
-            "mensaje": "No hay access token. Debes autenticarte nuevamente."
-        }), 401
-
     try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify({
+                "status": "error",
+                "mensaje":
+                    "No hay access token. "
+                    "Debes autenticarte nuevamente."
+            }), 401
 
         resultado = obtener_tendencias(
             access_token
@@ -460,33 +709,28 @@ def tendencias():
 
         return jsonify(resultado), 200
 
-    except requests.RequestException as error:
-
-        return jsonify({
-            "status": "error",
-            "mensaje": str(error)
-        }), 500
-
     except Exception as error:
-
         return jsonify({
             "status": "error",
             "mensaje": str(error)
         }), 500
 
 
-@app.route("/tendencias/<category_id>", methods=["GET"])
+@app.route(
+    "/tendencias/<category_id>",
+    methods=["GET"]
+)
 def tendencias_categoria(category_id):
-
-    access_token = tokens.get("access_token")
-
-    if not access_token:
-        return jsonify({
-            "status": "error",
-            "mensaje": "No hay access token. Debes autenticarte nuevamente."
-        }), 401
-
     try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify({
+                "status": "error",
+                "mensaje":
+                    "No hay access token. "
+                    "Debes autenticarte nuevamente."
+            }), 401
 
         resultado = obtener_tendencias_categoria(
             category_id,
@@ -495,15 +739,7 @@ def tendencias_categoria(category_id):
 
         return jsonify(resultado), 200
 
-    except requests.RequestException as error:
-
-        return jsonify({
-            "status": "error",
-            "mensaje": str(error)
-        }), 500
-
     except Exception as error:
-
         return jsonify({
             "status": "error",
             "mensaje": str(error)
@@ -514,17 +750,23 @@ def tendencias_categoria(category_id):
 # NOTIFICACIONES
 # ============================================================
 
-@app.route("/notifications", methods=["GET", "POST"])
+@app.route(
+    "/notifications",
+    methods=["GET", "POST"]
+)
 def notifications():
-
     if request.method == "GET":
-
         return jsonify(
             status="ok",
-            message="Endpoint de notificaciones disponible"
+            message=(
+                "Endpoint de notificaciones "
+                "disponible"
+            )
         ), 200
 
-    notification = request.get_json(silent=True)
+    notification = request.get_json(
+        silent=True
+    )
 
     print(
         "Notificación recibida:",
@@ -541,7 +783,6 @@ def notifications():
 # ============================================================
 
 if __name__ == "__main__":
-
     port = int(
         os.environ.get(
             "PORT",
@@ -553,3 +794,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port
     )
+
+
