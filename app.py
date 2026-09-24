@@ -30,7 +30,7 @@ CLIENT_ID = os.environ.get("MELI_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("MELI_CLIENT_SECRET")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-REDIRECT_URI = "https://mercadolibre-callback.onrender.com/callback"
+REDIRECT_URI = os.environ.get("REDIRECT_URI", "https://mercadolibre-callback.onrender.com/callback")
 TOKEN_URL = "https://api.mercadolibre.com/oauth/token"
 
 
