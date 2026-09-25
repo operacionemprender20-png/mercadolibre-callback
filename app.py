@@ -2,7 +2,9 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import psycopg2
+from psycopg2.extras import execute_values
 import requests
+
 from flask import Flask, jsonify, redirect, request
 
 from mercado_libre import (
@@ -66,7 +68,78 @@ def inicializar_base_datos():
     finally:
         conexion.close()
 
+def guardar_categorias(arbol):
+    filas = []
 
+    for category_id, datos in arbol.items():
+        if not isinstance(datos, dict):
+            continue
+
+        nombre = datos.get("name", category_id)
+        hijos = datos.get("children_categories", [])
+        total_items = datos.get("total_items_in_this_category")
+        es_hoja = len(hijos) == 0
+
+        filas.append((
+            category_id,
+            nombre,
+            None,
+            1,
+            [category_id],
+            nombre,
+            es_hoja,
+            total_items
+        ))
+
+        for hijo in hijos:
+            hijo_id = hijo.get("id")
+
+            if not hijo_id:
+                continue
+
+            filas.append((
+                hijo_id,
+                hijo.get("name", hijo_id),
+                category_id,
+                2,
+                [category_id, hijo_id],
+                f"{nombre} > {hijo.get('name', hijo_id)}",
+                True,
+                hijo.get("total_items_in_this_category")
+            ))
+
+    if not filas:
+        return 0
+
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            execute_values(cursor, """
+                INSERT INTO categorias (
+                    id, nombre, padre_id, nivel,
+                    ruta_ids, ruta_nombres, es_hoja, total_items
+                )
+                VALUES %s
+                ON CONFLICT (id) DO UPDATE SET
+                    nombre = EXCLUDED.nombre,
+                    padre_id = EXCLUDED.padre_id,
+                    nivel = EXCLUDED.nivel,
+                    ruta_ids = EXCLUDED.ruta_ids,
+                    ruta_nombres = EXCLUDED.ruta_nombres,
+                    es_hoja = EXCLUDED.es_hoja,
+                    total_items = EXCLUDED.total_items,
+                    activa = true,
+                    actualizada_en = now()
+            """, filas)
+
+        conexion.commit()
+
+    finally:
+        conexion.close()
+
+    return len(filas)
+    
 def guardar_tokens(resultado):
     access_token = resultado.get("access_token")
     refresh_token = resultado.get("refresh_token")
