@@ -108,6 +108,14 @@ def guardar_categorias(arbol):
                 hijo.get("total_items_in_this_category")
             ))
 
+    # Si el mismo id apareciera más de una vez en el árbol,
+    # nos quedamos solo con la última versión encontrada,
+    # para que la carga masiva de PostgreSQL no falle.
+    vistos = {}
+    for fila in filas:
+        vistos[fila[0]] = fila
+    filas = list(vistos.values())
+
     if not filas:
         return 0
 
@@ -961,5 +969,3 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port
     )
-
-
