@@ -14,7 +14,8 @@ from mercado_libre import (
     buscar_catalogo,
     obtener_tendencias,
     obtener_tendencias_categoria,
-    obtener_mas_vendidos_categoria
+    obtener_mas_vendidos_categoria,
+    obtener_arbol_categorias
 )
 
 from crawler import (
@@ -449,7 +450,32 @@ def categorias():
             message=str(error)
         ), 500
 
+@app.route("/arbol-categorias", methods=["GET"])
+def arbol_categorias():
+    try:
+        access_token = obtener_access_token()
 
+        if not access_token:
+            return jsonify(
+                status="error",
+                message=(
+                    "Primero debes autorizar la aplicación "
+                    "entrando a /authorize"
+                )
+            ), 401
+
+        resultado = obtener_arbol_categorias(
+            access_token
+        )
+
+        return jsonify(resultado), 200
+
+    except Exception as error:
+        return jsonify(
+            status="error",
+            message=str(error)
+        ), 500
+        
 @app.route("/categoria/<category_id>", methods=["GET"])
 def categoria(category_id):
     try:
