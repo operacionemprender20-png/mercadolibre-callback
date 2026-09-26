@@ -147,6 +147,49 @@ def guardar_categorias(arbol):
         conexion.close()
 
     return len(filas)
+def guardar_tendencias(lista_tendencias):
+    if not isinstance(lista_tendencias, list):
+        return 0
+
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tendencias_historico (
+                    id SERIAL PRIMARY KEY,
+                    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+                    posicion INT NOT NULL,
+                    keyword TEXT NOT NULL,
+                    url TEXT,
+                    UNIQUE (fecha, keyword)
+                )
+            """)
+
+            filas = []
+            for posicion, item in enumerate(lista_tendencias, start=1):
+                if not isinstance(item, dict):
+                    continue
+                keyword = item.get("keyword")
+                if not keyword:
+                    continue
+                filas.append((posicion, keyword, item.get("url")))
+
+            if filas:
+                execute_values(cursor, """
+                    INSERT INTO tendencias_historico (posicion, keyword, url)
+                    VALUES %s
+                    ON CONFLICT (fecha, keyword) DO UPDATE SET
+                        posicion = EXCLUDED.posicion,
+                        url = EXCLUDED.url
+                """, [(f[0], f[1], f[2]) for f in filas])
+
+        conexion.commit()
+
+    finally:
+        conexion.close()
+
+    return len(filas)
     
 def guardar_tokens(resultado):
     access_token = resultado.get("access_token")
