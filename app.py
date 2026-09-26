@@ -156,7 +156,7 @@ def guardar_tendencias(lista_tendencias):
     try:
         with conexion.cursor() as cursor:
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS tendencias_historico (
+                CREATE TABLE IF NOT EXISTS tendencias_generales (
                     id SERIAL PRIMARY KEY,
                     fecha DATE NOT NULL DEFAULT CURRENT_DATE,
                     posicion INT NOT NULL,
@@ -177,7 +177,7 @@ def guardar_tendencias(lista_tendencias):
 
             if filas:
                 execute_values(cursor, """
-                    INSERT INTO tendencias_historico (posicion, keyword, url)
+                    INSERT INTO tendencias_generales (posicion, keyword, url)
                     VALUES %s
                     ON CONFLICT (fecha, keyword) DO UPDATE SET
                         posicion = EXCLUDED.posicion,
