@@ -930,7 +930,41 @@ def tendencias_categoria(category_id):
             "mensaje": str(error)
         }), 500
 
+@app.route("/cargar-tendencias", methods=["GET"])
+def cargar_tendencias():
+    try:
+        access_token = obtener_access_token()
 
+        if not access_token:
+            return jsonify(
+                status="error",
+                message=(
+                    "Primero debes autorizar la aplicación "
+                    "entrando a /authorize"
+                )
+            ), 401
+
+        resultado = obtener_tendencias(access_token)
+
+        if not isinstance(resultado, list):
+            return jsonify(
+                status="error",
+                message="Formato inesperado de tendencias",
+                detalle=resultado
+            ), 500
+
+        total_guardadas = guardar_tendencias(resultado)
+
+        return jsonify(
+            status="ok",
+            tendencias_guardadas=total_guardadas
+        ), 200
+
+    except Exception as error:
+        return jsonify(
+            status="error",
+            message=str(error)
+        ), 500
 # ============================================================
 # MÁS VENDIDOS
 # ============================================================
