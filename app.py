@@ -17,7 +17,8 @@ from mercado_libre import (
     obtener_tendencias,
     obtener_tendencias_categoria,
     obtener_mas_vendidos_categoria,
-    obtener_arbol_categorias
+    obtener_arbol_categorias,
+    descubrir_categoria
 )
 
 from crawler import (
