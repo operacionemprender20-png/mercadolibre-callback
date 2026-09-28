@@ -220,3 +220,26 @@ def obtener_mas_vendidos_categoria(
         }
 
     return respuesta.json()
+
+def descubrir_categoria(texto, access_token=None):
+    url = f"{API_URL}/sites/{SITE_ID}/domain_discovery/search"
+
+    parametros = {
+        "q": texto
+    }
+
+    respuesta = requests.get(
+        url,
+        headers=obtener_headers(access_token),
+        params=parametros,
+        timeout=30
+    )
+
+    if not respuesta.ok:
+        return {
+            "status": "error",
+            "codigo_http": respuesta.status_code,
+            "respuesta_mercado_libre": respuesta.text
+        }
+
+    return respuesta.json()
