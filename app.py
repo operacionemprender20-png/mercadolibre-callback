@@ -1080,6 +1080,7 @@ def relacionar_categorias():
             ), 401
 
         limite = int(request.args.get("limite", 5))
+        desde = int(request.args.get("desde", 0))
 
         conexion = obtener_conexion()
         try:
@@ -1089,7 +1090,7 @@ def relacionar_categorias():
                     WHERE fecha = CURRENT_DATE
                     ORDER BY posicion
                     LIMIT %s
-                """, (limite,))
+                """, (limite,desde))
                 keywords = [fila[0] for fila in cursor.fetchall()]
         finally:
             conexion.close()
