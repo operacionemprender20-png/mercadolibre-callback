@@ -1011,6 +1011,64 @@ def cargar_tendencias():
             status="error",
             message=str(error)
         ), 500
+
+@app.route("/relacionar-categorias", methods=["GET"])
+def relacionar_categorias():
+    try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify(
+                status="error",
+                message=(
+                    "Primero debes autorizar la aplicación "
+                    "entrando a /authorize"
+                )
+            ), 401
+
+        limite = int(request.args.get("limite", 5))
+
+        conexion = obtener_conexion()
+        try:
+            with conexion.cursor() as cursor:
+                cursor.execute("""
+                    SELECT keyword FROM tendencias_generales
+                    WHERE fecha = CURRENT_DATE
+                    ORDER BY posicion
+                    LIMIT %s
+                """, (limite,))
+                keywords = [fila[0] for fila in cursor.fetchall()]
+        finally:
+            conexion.close()
+
+        resultados = []
+
+        for keyword in keywords:
+            descubrimiento = descubrir_categoria(keyword, access_token)
+            guardado = guardar_categoria_de_tendencia(keyword, descubrimiento)
+
+            resultados.append({
+                "keyword": keyword,
+                "guardado": guardado,
+                "categoria": (
+                    descubrimiento[0].get("category_name")
+                    if isinstance(descubrimiento, list) and descubrimiento
+                    else None
+                )
+            })
+
+        return jsonify(
+            status="ok",
+            total_procesadas=len(resultados),
+            resultados=resultados
+        ), 200
+
+    except Exception as error:
+        return jsonify(
+            status="error",
+            message=str(error)
+        ), 500
+        
 # ============================================================
 # MÁS VENDIDOS
 # ============================================================
