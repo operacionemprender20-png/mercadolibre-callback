@@ -191,6 +191,51 @@ def guardar_tendencias(lista_tendencias):
         conexion.close()
 
     return len(filas)
+def guardar_categoria_de_tendencia(keyword, resultado_descubrimiento):
+    if not isinstance(resultado_descubrimiento, list) or not resultado_descubrimiento:
+        return False
+
+    primero = resultado_descubrimiento[0]
+
+    category_id = primero.get("category_id")
+    category_name = primero.get("category_name")
+    domain_id = primero.get("domain_id")
+
+    if not category_id:
+        return False
+
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tendencias_categoria (
+                    id SERIAL PRIMARY KEY,
+                    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+                    keyword TEXT NOT NULL,
+                    category_id TEXT,
+                    category_name TEXT,
+                    domain_id TEXT,
+                    UNIQUE (fecha, keyword)
+                )
+            """)
+
+            cursor.execute("""
+                INSERT INTO tendencias_categoria
+                    (keyword, category_id, category_name, domain_id)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (fecha, keyword) DO UPDATE SET
+                    category_id = EXCLUDED.category_id,
+                    category_name = EXCLUDED.category_name,
+                    domain_id = EXCLUDED.domain_id
+            """, (keyword, category_id, category_name, domain_id))
+
+        conexion.commit()
+
+    finally:
+        conexion.close()
+
+    return True
     
 def guardar_tokens(resultado):
     access_token = resultado.get("access_token")
