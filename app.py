@@ -1121,7 +1121,59 @@ def relacionar_categorias():
             status="error",
             message=str(error)
         ), 500
-        
+
+@app.route("/cargar-ranking", methods=["GET"])
+def cargar_ranking():
+    try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify(
+                status="error",
+                message=(
+                    "Primero debes autorizar la aplicación "
+                    "entrando a /authorize"
+                )
+            ), 401
+
+        conexion = obtener_conexion()
+        try:
+            with conexion.cursor() as cursor:
+                cursor.execute("""
+                    SELECT DISTINCT category_id, category_name
+                    FROM tendencias_categoria
+                    WHERE fecha = CURRENT_DATE
+                    AND category_id IS NOT NULL
+                """)
+                categorias = cursor.fetchall()
+        finally:
+            conexion.close()
+
+        resultados = []
+
+        for category_id, category_name in categorias:
+            highlights = obtener_mas_vendidos_categoria(category_id, access_token)
+            total = guardar_ranking(category_id, highlights)
+
+            resultados.append({
+                "category_id": category_id,
+                "category_name": category_name,
+                "productos_guardados": total
+            })
+
+        return jsonify(
+            status="ok",
+            categorias_procesadas=len(resultados),
+            resultados=resultados
+        ), 200
+
+    except Exception as error:
+        return jsonify(
+            status="error",
+            message=str(error)
+        ), 500
+
+
 # ============================================================
 # MÁS VENDIDOS
 # ============================================================
