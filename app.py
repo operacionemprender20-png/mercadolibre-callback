@@ -236,6 +236,59 @@ def guardar_categoria_de_tendencia(keyword, resultado_descubrimiento):
         conexion.close()
 
     return True
+
+def guardar_ranking(category_id, resultado_highlights):
+    if not isinstance(resultado_highlights, dict):
+        return 0
+
+    items = resultado_highlights.get("content", [])
+
+    if not items:
+        return 0
+
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ranking_mas_vendidos (
+                    id SERIAL PRIMARY KEY,
+                    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+                    category_id TEXT NOT NULL,
+                    posicion INT NOT NULL,
+                    entidad_tipo TEXT,
+                    entidad_id TEXT,
+                    UNIQUE (fecha, category_id, posicion)
+                )
+            """)
+
+            filas = []
+            for item in items:
+                posicion = item.get("position")
+                entidad_id = item.get("id")
+                entidad_tipo = item.get("type")
+
+                if not posicion or not entidad_id:
+                    continue
+
+                filas.append((category_id, posicion, entidad_tipo, entidad_id))
+
+            if filas:
+                execute_values(cursor, """
+                    INSERT INTO ranking_mas_vendidos
+                        (category_id, posicion, entidad_tipo, entidad_id)
+                    VALUES %s
+                    ON CONFLICT (fecha, category_id, posicion) DO UPDATE SET
+                        entidad_tipo = EXCLUDED.entidad_tipo,
+                        entidad_id = EXCLUDED.entidad_id
+                """, filas)
+
+        conexion.commit()
+
+    finally:
+        conexion.close()
+
+    return len(filas)
     
 def guardar_tokens(resultado):
     access_token = resultado.get("access_token")
