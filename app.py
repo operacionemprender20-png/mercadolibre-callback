@@ -1089,8 +1089,8 @@ def relacionar_categorias():
                     SELECT keyword FROM tendencias_generales
                     WHERE fecha = CURRENT_DATE
                     ORDER BY posicion
-                    LIMIT %s
-                """, (limite,desde))
+                    LIMIT %(limite)s OFFSET %(desde)s
+                """, {"limite": limite, "desde": desde})
                 keywords = [fila[0] for fila in cursor.fetchall()]
         finally:
             conexion.close()
