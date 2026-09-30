@@ -1137,15 +1137,20 @@ def cargar_ranking():
                 )
             ), 401
 
+        limite = int(request.args.get("limite", 8))
+        desde = int(request.args.get("desde", 0))
+
         conexion = obtener_conexion()
         try:
             with conexion.cursor() as cursor:
                 cursor.execute("""
                     SELECT DISTINCT category_id, category_name
                     FROM tendencias_categoria
-                    WHERE fecha = CURRENT_DATE
+                    WHERE fecha = (SELECT MAX(fecha) FROM tendencias_categoria)
                     AND category_id IS NOT NULL
-                """)
+                    ORDER BY category_id
+                    LIMIT %(limite)s OFFSET %(desde)s
+                """, {"limite": limite, "desde": desde})
                 categorias = cursor.fetchall()
         finally:
             conexion.close()
