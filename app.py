@@ -236,7 +236,42 @@ def guardar_categoria_de_tendencia(keyword, resultado_descubrimiento):
         conexion.close()
 
     return True
+@app.route("/consultar", methods=["GET"])
+def consultar():
+    try:
+        access_token = obtener_access_token()
 
+        if not access_token:
+            return jsonify(
+                status="error",
+                message=(
+                    "Primero debes autorizar la aplicación "
+                    "entrando a /authorize"
+                )
+            ), 401
+
+        texto = request.args.get("q")
+
+        if not texto:
+            return jsonify(
+                status="error",
+                message="Debes indicar el producto a buscar, ej: /consultar?q=silla gamer"
+            ), 400
+
+        descubrimiento = descubrir_categoria(texto, access_token)
+
+        return jsonify(
+            status="ok",
+            texto_buscado=texto,
+            resultado=descubrimiento
+        ), 200
+
+    except Exception as error:
+        return jsonify(
+            status="error",
+            message=str(error)
+        ), 500
+        
 def guardar_ranking(category_id, resultado_highlights):
     if not isinstance(resultado_highlights, dict):
         return 0
