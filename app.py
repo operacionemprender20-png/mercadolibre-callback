@@ -236,6 +236,7 @@ def guardar_categoria_de_tendencia(keyword, resultado_descubrimiento):
         conexion.close()
 
     return True
+
 @app.route("/consultar", methods=["GET"])
 def consultar():
     try:
@@ -260,10 +261,28 @@ def consultar():
 
         descubrimiento = descubrir_categoria(texto, access_token)
 
+        if not isinstance(descubrimiento, list) or not descubrimiento:
+            return jsonify(
+                status="ok",
+                texto_buscado=texto,
+                mensaje="No se encontró una categoría clara para este texto"
+            ), 200
+
+        mejor_categoria = descubrimiento[0]
+        category_id = mejor_categoria.get("category_id")
+        category_name = mejor_categoria.get("category_name")
+
+        ranking = obtener_mas_vendidos_categoria(category_id, access_token)
+        productos = ranking.get("content", []) if isinstance(ranking, dict) else []
+
         return jsonify(
             status="ok",
             texto_buscado=texto,
-            resultado=descubrimiento
+            categoria_encontrada={
+                "category_id": category_id,
+                "category_name": category_name
+            },
+            top_mas_vendidos=productos
         ), 200
 
     except Exception as error:
