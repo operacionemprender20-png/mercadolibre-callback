@@ -290,7 +290,33 @@ def consultar():
             status="error",
             message=str(error)
         ), 500
-        
+
+@app.route("/vigilar", methods=["GET"])
+def vigilar():
+    try:
+        category_id = request.args.get("category_id")
+        category_name = request.args.get("category_name", category_id)
+        nota = request.args.get("nota")
+
+        if not category_id:
+            return jsonify(
+                status="error",
+                message="Debes indicar category_id, ej: /vigilar?category_id=MLC440313&category_name=Pinzas de Pelo"
+            ), 400
+
+        agregar_categoria_vigilada(category_id, category_name, nota)
+
+        return jsonify(
+            status="ok",
+            mensaje=f"Categoría {category_name} agregada a vigilancia"
+        ), 200
+
+    except Exception as error:
+        return jsonify(
+            status="error",
+            message=str(error)
+        ), 500
+
 def guardar_ranking(category_id, resultado_highlights):
     if not isinstance(resultado_highlights, dict):
         return 0
