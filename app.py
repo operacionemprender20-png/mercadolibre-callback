@@ -343,7 +343,33 @@ def guardar_ranking(category_id, resultado_highlights):
         conexion.close()
 
     return len(filas)
-    
+def agregar_categoria_vigilada(category_id, category_name, nota=None):
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS categorias_vigiladas (
+                    category_id TEXT PRIMARY KEY,
+                    category_name TEXT,
+                    nota TEXT,
+                    agregada_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+
+            cursor.execute("""
+                INSERT INTO categorias_vigiladas (category_id, category_name, nota)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (category_id) DO UPDATE SET
+                    category_name = EXCLUDED.category_name,
+                    nota = EXCLUDED.nota
+            """, (category_id, category_name, nota))
+
+        conexion.commit()
+
+    finally:
+        conexion.close()
+        
 def guardar_tokens(resultado):
     access_token = resultado.get("access_token")
     refresh_token = resultado.get("refresh_token")
