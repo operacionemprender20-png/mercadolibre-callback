@@ -1,0 +1,67 @@
+name: Captura semanal TrendVenta
+
+on:
+  schedule:
+    - cron: "7 10 * * 1"     # lunes 07:07 Chile (10:07 UTC)
+  workflow_dispatch:
+
+jobs:
+  captura:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      BASE_URL: https://trendventa-api.onrender.com
+      TOKEN: ${{ secrets.TRENDVENTA_TOKEN }}
+      LOTE: 8
+      MAX_DESDE: 120
+
+    steps:
+      - name: 1. Despertar Render (el plan gratis se duerme)
+        run: |
+          for i in 1 2 3 4 5 6; do
+            codigo=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "$BASE_URL/" || true)
+            if [ "$codigo" = "200" ]; then echo "Render despierto"; exit 0; fi
+            echo "Intento $i (código $codigo): todavía dormido, espero 20 s..."; sleep 20
+          done
+          echo "Render no respondió"; exit 1
+
+      - name: 2. Cargar tendencias generales
+        run: |
+          curl -sS --fail-with-body --max-time 120 --retry 2 --retry-delay 15 \
+            -H "X-TrendVenta-Token: $TOKEN" \
+            "$BASE_URL/cargar-tendencias" | tee respuesta.json
+          echo
+          total=$(jq -r '.tendencias_guardadas // 0' respuesta.json)
+          echo "Tendencias guardadas: $total"
+          if [ "$total" -eq 0 ]; then echo "No llegaron tendencias, se detiene"; exit 1; fi
+
+      - name: 3. Relacionar tendencias con categorías (en tandas)
+        run: |
+          desde=0
+          while [ $desde -le $MAX_DESDE ]; do
+            echo "== relacionar-categorias desde=$desde limite=$LOTE =="
+            curl -sS --fail-with-body --max-time 120 --retry 2 --retry-delay 15 \
+              -H "X-TrendVenta-Token: $TOKEN" \
+              "$BASE_URL/relacionar-categorias?limite=$LOTE&desde=$desde" > respuesta.json
+            n=$(jq -r '.total_procesadas // 0' respuesta.json)
+            jq -r '.resultados[]? | "  \(.keyword) -> \(.categoria // "SIN CATEGORÍA")"' respuesta.json
+            if [ "$n" -eq 0 ]; then echo "Listo, no quedan tendencias"; break; fi
+            desde=$((desde + LOTE))
+            sleep 5
+          done
+
+      - name: 4. Cargar ranking de más vendidos (en tandas)
+        run: |
+          desde=0
+          while [ $desde -le $MAX_DESDE ]; do
+            echo "== cargar-ranking desde=$desde limite=$LOTE =="
+            curl -sS --fail-with-body --max-time 120 --retry 2 --retry-delay 15 \
+              -H "X-TrendVenta-Token: $TOKEN" \
+              "$BASE_URL/cargar-ranking?limite=$LOTE&desde=$desde" > respuesta.json
+            n=$(jq -r '.categorias_procesadas // 0' respuesta.json)
+            jq -r '.resultados[]? | "  \(.category_name) (\(.category_id)): \(.productos_guardados) productos"' respuesta.json
+            if [ "$n" -eq 0 ]; then echo "Listo, no quedan categorías"; break; fi
+            desde=$((desde + LOTE))
+            sleep 5
+          done
