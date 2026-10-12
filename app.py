@@ -34,7 +34,28 @@ CLIENT_ID = os.environ.get("MELI_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("MELI_CLIENT_SECRET")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-REDIRECT_URI = os.environ.get("REDIRECT_URI", "https://mercadolibre-callback.onrender.com/callback")
+REDIRECT_URI = os.environ.get("REDIRECT_URI", "https://trendventa-api.onrender.com/callback")
+
+# Clave para proteger las rutas que escriben en la base.
+# Si la variable no está definida en Render, las rutas quedan abiertas (como antes).
+TRENDVENTA_TOKEN = os.environ.get("TRENDVENTA_TOKEN")
+
+
+def token_valido():
+    if not TRENDVENTA_TOKEN:
+        return True
+    recibido = (
+        request.headers.get("X-TrendVenta-Token")
+        or request.args.get("token")
+    )
+    return recibido == TRENDVENTA_TOKEN
+
+
+def respuesta_sin_permiso():
+    return jsonify(
+        status="error",
+        message="Falta la clave TrendVenta (header X-TrendVenta-Token o ?token=)"
+    ), 401
 TOKEN_URL = "https://api.mercadolibre.com/oauth/token"
 
 
@@ -293,6 +314,9 @@ def consultar():
 
 @app.route("/vigilar", methods=["GET"])
 def vigilar():
+    if not token_valido():
+        return respuesta_sin_permiso()
+
     try:
         category_id = request.args.get("category_id")
         category_name = request.args.get("category_name", category_id)
@@ -807,6 +831,9 @@ def arbol_categorias():
         
 @app.route("/cargar-categorias", methods=["GET"])
 def cargar_categorias():
+    if not token_valido():
+        return respuesta_sin_permiso()
+
     try:
         access_token = obtener_access_token()
 
@@ -1137,6 +1164,9 @@ def tendencias_categoria(category_id):
 
 @app.route("/cargar-tendencias", methods=["GET"])
 def cargar_tendencias():
+    if not token_valido():
+        return respuesta_sin_permiso()
+
     try:
         access_token = obtener_access_token()
 
@@ -1173,6 +1203,9 @@ def cargar_tendencias():
 
 @app.route("/relacionar-categorias", methods=["GET"])
 def relacionar_categorias():
+    if not token_valido():
+        return respuesta_sin_permiso()
+
     try:
         access_token = obtener_access_token()
 
@@ -1231,6 +1264,9 @@ def relacionar_categorias():
 
 @app.route("/cargar-ranking", methods=["GET"])
 def cargar_ranking():
+    if not token_valido():
+        return respuesta_sin_permiso()
+
     try:
         access_token = obtener_access_token()
 
@@ -1250,10 +1286,28 @@ def cargar_ranking():
         try:
             with conexion.cursor() as cursor:
                 cursor.execute("""
-                    SELECT DISTINCT category_id, category_name
-                    FROM tendencias_categoria
-                    WHERE fecha = (SELECT MAX(fecha) FROM tendencias_categoria)
-                    AND category_id IS NOT NULL
+                    CREATE TABLE IF NOT EXISTS categorias_vigiladas (
+                        category_id TEXT PRIMARY KEY,
+                        category_name TEXT,
+                        nota TEXT,
+                        agregada_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """)
+                conexion.commit()
+
+                # Categorías de las tendencias de la semana + las que vigilas tú
+                cursor.execute("""
+                    SELECT category_id, MAX(category_name) AS category_name
+                    FROM (
+                        SELECT category_id, category_name
+                        FROM tendencias_categoria
+                        WHERE fecha = (SELECT MAX(fecha) FROM tendencias_categoria)
+                        AND category_id IS NOT NULL
+                        UNION ALL
+                        SELECT category_id, category_name
+                        FROM categorias_vigiladas
+                    ) AS todas
+                    GROUP BY category_id
                     ORDER BY category_id
                     LIMIT %(limite)s OFFSET %(desde)s
                 """, {"limite": limite, "desde": desde})
