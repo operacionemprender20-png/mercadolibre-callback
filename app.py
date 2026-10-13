@@ -258,6 +258,56 @@ def guardar_categoria_de_tendencia(keyword, resultado_descubrimiento):
 
     return True
 
+def guardar_tendencias_nicho(category_id, category_name, lista_tendencias):
+    if not isinstance(lista_tendencias, list):
+        return 0
+
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tendencias_nicho (
+                    id SERIAL PRIMARY KEY,
+                    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+                    category_id TEXT NOT NULL,
+                    category_name TEXT,
+                    posicion INT NOT NULL,
+                    keyword TEXT NOT NULL,
+                    url TEXT,
+                    UNIQUE (fecha, category_id, keyword)
+                )
+            """)
+
+            filas = []
+            vistas = set()
+            for posicion, item in enumerate(lista_tendencias, start=1):
+                if not isinstance(item, dict):
+                    continue
+                keyword = item.get("keyword")
+                if not keyword or keyword in vistas:
+                    continue
+                vistas.add(keyword)
+                filas.append((category_id, category_name, posicion, keyword, item.get("url")))
+
+            if filas:
+                execute_values(cursor, """
+                    INSERT INTO tendencias_nicho
+                        (category_id, category_name, posicion, keyword, url)
+                    VALUES %s
+                    ON CONFLICT (fecha, category_id, keyword) DO UPDATE SET
+                        category_name = EXCLUDED.category_name,
+                        posicion = EXCLUDED.posicion,
+                        url = EXCLUDED.url
+                """, filas)
+
+        conexion.commit()
+
+    finally:
+        conexion.close()
+
+    return len(filas)
+
 @app.route("/consultar", methods=["GET"])
 def consultar():
     try:
@@ -1326,6 +1376,82 @@ def cargar_ranking():
                 "category_name": category_name,
                 "productos_guardados": total
             })
+
+        return jsonify(
+            status="ok",
+            categorias_procesadas=len(resultados),
+            resultados=resultados
+        ), 200
+
+    except Exception as error:
+        return jsonify(
+            status="error",
+            message=str(error)
+        ), 500
+
+
+@app.route("/cargar-tendencias-nicho", methods=["GET"])
+def cargar_tendencias_nicho():
+    if not token_valido():
+        return respuesta_sin_permiso()
+
+    try:
+        access_token = obtener_access_token()
+
+        if not access_token:
+            return jsonify(
+                status="error",
+                message=(
+                    "Primero debes autorizar la aplicación "
+                    "entrando a /authorize"
+                )
+            ), 401
+
+        limite = int(request.args.get("limite", 8))
+        desde = int(request.args.get("desde", 0))
+
+        conexion = obtener_conexion()
+        try:
+            with conexion.cursor() as cursor:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS categorias_vigiladas (
+                        category_id TEXT PRIMARY KEY,
+                        category_name TEXT,
+                        nota TEXT,
+                        agregada_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """)
+                conexion.commit()
+
+                cursor.execute("""
+                    SELECT category_id, category_name
+                    FROM categorias_vigiladas
+                    ORDER BY category_id
+                    LIMIT %(limite)s OFFSET %(desde)s
+                """, {"limite": limite, "desde": desde})
+                categorias = cursor.fetchall()
+        finally:
+            conexion.close()
+
+        resultados = []
+
+        for category_id, category_name in categorias:
+            tendencias = obtener_tendencias_categoria(category_id, access_token)
+
+            if isinstance(tendencias, list):
+                total = guardar_tendencias_nicho(category_id, category_name, tendencias)
+                resultados.append({
+                    "category_id": category_id,
+                    "category_name": category_name,
+                    "tendencias_guardadas": total
+                })
+            else:
+                resultados.append({
+                    "category_id": category_id,
+                    "category_name": category_name,
+                    "tendencias_guardadas": 0,
+                    "error": tendencias
+                })
 
         return jsonify(
             status="ok",
