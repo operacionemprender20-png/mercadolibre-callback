@@ -65,3 +65,18 @@ jobs:
             desde=$((desde + LOTE))
             sleep 5
           done
+
+      - name: 5. Cargar tendencias de nicho (categorías vigiladas)
+        run: |
+          desde=0
+          while [ $desde -le $MAX_DESDE ]; do
+            echo "== cargar-tendencias-nicho desde=$desde limite=$LOTE =="
+            curl -sS --fail-with-body --max-time 120 --retry 2 --retry-delay 15 \
+              -H "X-TrendVenta-Token: $TOKEN" \
+              "$BASE_URL/cargar-tendencias-nicho?limite=$LOTE&desde=$desde" > respuesta.json
+            n=$(jq -r '.categorias_procesadas // 0' respuesta.json)
+            jq -r '.resultados[]? | "  \(.category_name) (\(.category_id)): \(.tendencias_guardadas) tendencias"' respuesta.json
+            if [ "$n" -eq 0 ]; then echo "Listo, no quedan categorías vigiladas"; break; fi
+            desde=$((desde + LOTE))
+            sleep 5
+          done
