@@ -1581,6 +1581,9 @@ ON CONFLICT (categoria_id, fecha) DO UPDATE SET
 
 @app.route("/cargar-metricas")
 def cargar_metricas():
+    token_esperado = os.environ.get("TRENDVENTA_TOKEN")
+    if token_esperado and request.headers.get("X-TrendVenta-Token") != token_esperado:
+           return jsonify({"ok": False, "error": "no autorizado"}), 401
     conn = None
     try:
         conn = conectar_metricas()
