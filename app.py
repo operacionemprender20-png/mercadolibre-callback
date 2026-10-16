@@ -1534,7 +1534,69 @@ def notifications():
 # ============================================================
 # EJECUCIÓN
 # ============================================================
+# ---------- /cargar-metricas ----------
+def conectar_metricas():
+    return psycopg2.connect(os.environ["DATABASE_URL"])
 
+
+SQL_CARGAR_METRICAS = """
+INSERT INTO metricas_categoria
+    (categoria_id, fecha, ejecucion_id, total_publicaciones,
+     productos_ranking, productos_catalogo, apariciones_tendencias)
+SELECT
+    c.id,
+    (NOW() AT TIME ZONE 'America/Santiago')::date,
+    NULL,
+    c.total_items,
+    r.productos_ranking,
+    r.productos_catalogo,
+    COALESCE(t.apariciones, 0)
+FROM categorias c
+LEFT JOIN (
+    SELECT category_id,
+           COUNT(*) AS productos_ranking,
+           COUNT(*) FILTER (WHERE UPPER(entidad_tipo) = 'PRODUCT') AS productos_catalogo
+    FROM ranking_mas_vendidos
+    WHERE fecha >= (SELECT MAX(fecha) FROM ranking_mas_vendidos) - 6
+    GROUP BY category_id
+) r ON r.category_id = c.id
+LEFT JOIN (
+    SELECT category_id, COUNT(DISTINCT keyword) AS apariciones
+    FROM tendencias_categoria
+    WHERE fecha >= (SELECT MAX(fecha) FROM tendencias_categoria) - 6
+    GROUP BY category_id
+) t ON t.category_id = c.id
+WHERE c.id IN (
+    SELECT category_id FROM ranking_mas_vendidos
+    UNION
+    SELECT category_id FROM tendencias_categoria
+)
+ON CONFLICT (categoria_id, fecha) DO UPDATE SET
+    total_publicaciones    = EXCLUDED.total_publicaciones,
+    productos_ranking      = EXCLUDED.productos_ranking,
+    productos_catalogo     = EXCLUDED.productos_catalogo,
+    apariciones_tendencias = EXCLUDED.apariciones_tendencias;
+"""
+
+
+@app.route("/cargar-metricas")
+def cargar_metricas():
+    conn = None
+    try:
+        conn = conectar_metricas()
+        with conn.cursor() as cur:
+            cur.execute(SQL_CARGAR_METRICAS)
+            filas = cur.rowcount
+        conn.commit()
+        return jsonify({"ok": True, "categorias_cargadas": filas})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+            
 if __name__ == "__main__":
     port = int(
         os.environ.get(
