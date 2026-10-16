@@ -65,7 +65,6 @@ jobs:
             desde=$((desde + LOTE))
             sleep 5
           done
-
       - name: 5. Cargar tendencias de nicho (categorías vigiladas)
         run: |
           desde=0
@@ -80,3 +79,13 @@ jobs:
             desde=$((desde + LOTE))
             sleep 5
           done
+
+      - name: 6. Cargar métricas de categorías
+        run: |
+          curl -sS --fail-with-body --max-time 120 --retry 2 --retry-delay 15 \
+            -H "X-TrendVenta-Token: $TOKEN" \
+            "$BASE_URL/cargar-metricas" | tee respuesta.json
+          echo
+          n=$(jq -r '.categorias_cargadas // 0' respuesta.json)
+          echo "Categorías con métricas: $n"
+          if [ "$n" -eq 0 ]; then echo "No se cargaron métricas"; exit 1; fi
