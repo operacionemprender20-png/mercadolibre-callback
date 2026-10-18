@@ -1600,6 +1600,114 @@ def cargar_metricas():
         if conn:
             conn.close()
             
+# ---------- /explorador (frontend) ----------
+from flask import render_template_string
+
+PLANTILLA_EXPLORADOR = """<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrendVenta · Explorador</title>
+<style>
+:root{--bg:#f7f5fb;--card:#fff;--txt:#1f1b2e;--sub:#6b6680;--pri:#6c4cf1;--ok:#1f9d55;--okbg:#e3f6ea;--no:#8a8799;--nobg:#efeef3}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+header{padding:24px 16px 8px;max-width:960px;margin:auto}
+h1{margin:0;font-size:26px}
+h1 span{color:var(--pri)}
+p.sub{margin:6px 0 0;color:var(--sub);font-size:14px}
+.filtros{max-width:960px;margin:12px auto;padding:0 16px;display:flex;flex-wrap:wrap;gap:8px}
+.filtros button{border:1px solid #d9d4f0;background:#fff;border-radius:999px;padding:8px 14px;font-size:14px;cursor:pointer}
+.filtros button.activo{background:var(--pri);color:#fff;border-color:var(--pri)}
+main{max-width:960px;margin:auto;padding:0 16px 32px;display:grid;gap:10px}
+.cat{background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.nombre{font-weight:600;font-size:16px}
+.puntaje{font-size:13px;color:var(--pri);font-weight:600;white-space:nowrap}
+.datos{color:var(--sub);font-size:13px;margin:4px 0 8px}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:12px;padding:4px 10px;border-radius:999px;background:var(--nobg);color:var(--no)}
+.tag.si{background:var(--okbg);color:var(--ok);font-weight:600}
+.vacio{text-align:center;color:var(--sub);padding:24px}
+</style></head><body>
+<header>
+  <h1>Trend<span>Venta</span></h1>
+  <p class="sub">Explorador para principiantes · {{ filas|length }} categorías · actualizado {{ fecha }}</p>
+</header>
+<div class="filtros">
+  <button class="activo" data-f="todas">Todas</button>
+  <button data-f="baja_competencia">Poca competencia</button>
+  <button data-f="bajo_catalogo">Poco catálogo</button>
+  <button data-f="en_crecimiento">En tendencia</button>
+  <button data-f="tres">3 o más ✓</button>
+</div>
+<main>
+{% for f in filas %}
+  <div class="cat" data-baja_competencia="{{ f.baja_competencia }}" data-bajo_catalogo="{{ f.bajo_catalogo }}"
+       data-en_crecimiento="{{ f.en_crecimiento }}" data-puntaje="{{ f.puntaje }}">
+    <div class="top"><div class="nombre">{{ f.categoria }}</div><div class="puntaje">{{ f.puntaje }}/4</div></div>
+    <div class="datos">{{ f.publicaciones }} publicaciones{% if f.pct_catalogo is not none %} · {{ f.pct_catalogo }}% catálogo{% endif %}</div>
+    <div class="tags">
+      <span class="tag {{ 'si' if f.baja_competencia else '' }}">Poca competencia</span>
+      <span class="tag {{ 'si' if f.bajo_catalogo else '' }}">Poco catálogo</span>
+      <span class="tag {{ 'si' if f.en_crecimiento else '' }}">En tendencia</span>
+      <span class="tag {{ 'si' if f.precio_bajo else '' }}">Precio accesible</span>
+    </div>
+  </div>
+{% endfor %}
+  <div class="vacio" id="vacio" hidden>No hay categorías con ese filtro</div>
+</main>
+<script>
+document.querySelectorAll('.filtros button').forEach(function (b) {
+  b.onclick = function () {
+    document.querySelectorAll('.filtros button').forEach(function (x) { x.classList.remove('activo'); });
+    b.classList.add('activo');
+    var f = b.dataset.f, n = 0;
+    document.querySelectorAll('.cat').forEach(function (c) {
+      var ok = f === 'todas' || (f === 'tres' ? +c.dataset.puntaje >= 3 : c.dataset[f] === 'True');
+      c.hidden = !ok;
+      if (ok) n++;
+    });
+    document.getElementById('vacio').hidden = n > 0;
+  };
+});
+</script>
+</body></html>"""
+
+
+@app.route("/explorador")
+def explorador():
+    conn = conectar_metricas()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT categoria, total_publicaciones, pct_catalogo,
+                       baja_competencia, bajo_catalogo, en_crecimiento, precio_bajo, fecha
+                FROM indicadores_principiante
+            """)
+            datos = cur.fetchall()
+    finally:
+        conn.close()
+
+    filas = []
+    for cat, pub, pct, bc, bcat, crec, prec, fecha in datos:
+        puntaje = sum(1 for x in (bc, bcat, crec, prec) if x)
+        filas.append({
+            "categoria": cat,
+            "publicaciones": f"{pub or 0:,}".replace(",", "."),
+            "pct_catalogo": int(pct) if pct is not None else None,
+            "baja_competencia": bc,
+            "bajo_catalogo": bcat,
+            "en_crecimiento": crec,
+            "precio_bajo": prec,
+            "puntaje": puntaje,
+        })
+    filas.sort(key=lambda f: (-f["puntaje"], f["categoria"]))
+    fecha_txt = datos[0][7].strftime("%d-%m-%Y") if datos else "—"
+    return render_template_string(PLANTILLA_EXPLORADOR, filas=filas, fecha=fecha_txt)
+
+
+
+
 if __name__ == "__main__":
     port = int(
         os.environ.get(
