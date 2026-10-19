@@ -1705,8 +1705,8 @@ def explorador():
     fecha_txt = datos[0][7].strftime("%d-%m-%Y") if datos else "—"
     return render_template_string(PLANTILLA_EXPLORADOR, filas=filas, fecha=fecha_txt)
 
-
-
+from web import web_bp
+app.register_blueprint(web_bp)
 
 if __name__ == "__main__":
     port = int(
