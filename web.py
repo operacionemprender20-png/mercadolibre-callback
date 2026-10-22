@@ -19,7 +19,7 @@ from datetime import date, datetime
 
 import psycopg2
 import psycopg2.extras
-from flask import Blueprint, render_template_string, request, redirect, url_for
+from flask import Blueprint, render_template_string, request, redirect, url_for, g
 from markupsafe import Markup
 
 web_bp = Blueprint("web", __name__, url_prefix="/web")
@@ -33,18 +33,33 @@ MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "
 # ---------------------------------------------------------
 # Base de datos
 # ---------------------------------------------------------
-def _conectar():
-    return psycopg2.connect(os.environ["DATABASE_URL"])
+def _conexion():
+    # Una sola conexión por pantalla: se abre en la primera consulta
+    # y se reutiliza en las siguientes de la misma visita.
+    if "tv_conn" not in g:
+        conn = psycopg2.connect(os.environ["DATABASE_URL"])
+        conn.autocommit = True
+        g.tv_conn = conn
+    return g.tv_conn
+
+
+@web_bp.teardown_request
+def _cerrar_conexion(_error=None):
+    conn = g.pop("tv_conn", None)
+    if conn is not None:
+        conn.close()
 
 
 def _consultar(sql, params=None):
-    conn = _conectar()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, params or ())
-            return cur.fetchall()
-    finally:
-        conn.close()
+    with _conexion().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(sql, params or ())
+        return cur.fetchall()
+
+
+# Página para UptimeRobot: mantiene Render despierto SIN tocar la base de datos
+@web_bp.route("/ping")
+def ping():
+    return "ok"
 
 
 SQL_INDICADORES = """
